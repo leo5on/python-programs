@@ -20,10 +20,11 @@ class circle_RANSAC():
 
     def check_colinearity(self,p0, p1, p2):
 
-        #source: https://www.geeksforgeeks.org/program-check-three-points-collinear/
+        # This method is used to check if the three randomized points are colinear
+        # source: https://www.geeksforgeeks.org/program-check-three-points-collinear/
       
         a = p0[0] * (p1[1] - p2[1]) + p1[0] * (p2[1] - p0[1]) + p2[0] * (p0[1] - p1[1]) 
-    
+
         if (a == 0): 
             return 1
         else: 
@@ -33,22 +34,24 @@ class circle_RANSAC():
 
         # This method is responsible for selecting 3 random points from the binary distribution
         self.points_matrix = np.array(np.nonzero(img_bin)).T
-        self.matrix_length = int(len(self.points_matrix))
+        self.points_matrix[:,[0, 1]] = self.points_matrix[:,[1, 0]]                                 # This line inverts the coordenates inside the binary matrix. They were coming inverted
+        self.matrix_length = int(len(self.points_matrix))-1
         random_1 = randint(0, self.matrix_length)
         random_2 = randint(0, self.matrix_length)
         random_3 = randint(0, self.matrix_length)
         p0 = self.points_matrix[random_1]
         p1 = self.points_matrix[random_2]
         p2 = self.points_matrix[random_3]
-        if (p0[1] == p1[1]) or (p0[1] == p2[1]) or (p1[1] == p2[1]):                        # Check if the y coordenate of the points are equal (we don't want a division by zero)
-            self.random_points(img_bin)
-        dp0p1 = np.sqrt(np.power((p1[0]-p0[0]), 2) + np.power((p1[1]-p0[1]), 2))
-        dp0p2 = np.sqrt(np.power((p2[0]-p0[0]), 2) + np.power((p2[1]-p0[1]), 2))            
-        dp1p2 = np.sqrt(np.power((p2[0]-p1[0]), 2) + np.power((p2[1]-p1[1]), 2))
-        if ((dp0p1 < 10) or (dp1p2 < 10) or (dp0p2 < 10)):                      # Check if the points are too close to each other
+        if (abs(p0[1] - p1[1])<0.001 or abs(p0[1] - p2[1])<0.001 or abs(p1[1] - p2[1])<0.001):       # Check if the y coordenate of the points are equal (we don't want a division by zero)
             self.random_points(img_bin)
         x = self.check_colinearity(p0, p1, p2)
         if (x == 1):
+            self.random_points(img_bin)
+
+        dp0p1 = np.sqrt(np.power((p1[0]-p0[0]), 2) + np.power((p1[1]-p0[1]), 2))
+        dp0p2 = np.sqrt(np.power((p2[0]-p0[0]), 2) + np.power((p2[1]-p0[1]), 2))            
+        dp1p2 = np.sqrt(np.power((p2[0]-p1[0]), 2) + np.power((p2[1]-p1[1]), 2))
+        if ((dp0p1 < 10) or (dp1p2 < 10) or (dp0p2 < 10)):                                  # Check if the points are too close to each other
             self.random_points(img_bin)
         return p0, p1, p2
 
@@ -89,7 +92,9 @@ class circle_RANSAC():
         l2 = np.cross(h[2], h[3])                           # get second line
         x, y, z = np.cross(l1, l2)                          # point of intersection
         if z == 0:                                          # lines are parallel
-            return (float('inf'), float('inf'))
+            c[0] = -1
+            c[1] = -1
+            r = 0
         else:
             c[0] = x/z
             c[1] = y/z
@@ -104,7 +109,9 @@ class circle_RANSAC():
         inlier = np.zeros(shape = (self.matrix_length, 2))
         min_inliers = self.min_samp
         for i in range(self.matrix_length):
-            dist_cent = np.sqrt(np.power((self.points_matrix[i][0]-c[0]), 2) + np.power((self.points_matrix[i][1]-c[1]), 2))
+            deltax2 = np.power((self.points_matrix[i][0]-c[0]), 2)
+            deltay2 = np.power((self.points_matrix[i][1]-c[1]), 2)
+            dist_cent = np.sqrt(deltax2 + deltay2)
             d_circ = dist_cent - r                  # we calculate the distance from the point to the possible circle, if it is smaller than the threshold, it is an inlier
             if (d_circ < self.threshold):
                 inlier[i] = self.points_matrix[i]
@@ -130,7 +137,10 @@ class circle_RANSAC():
         while (i < self.max_ite):
             p0, p1, p2 = self.random_points(img_bin)
             a1, a2, b1, b2 = self.ortogonal_line_points(p0, p1, p2)
-            c, r = self.find_centre(a1, a2, b1, b2)
+            try:
+                c, r = self.find_centre(a1, a2, b1, b2)                     # implemented try except routine because the program was crashing with some divisions
+            except:
+                self.circle_ransac(self, img_bin, threshold, min_samp, max_ite, r_min, r_max)
             c, r = self.points_tester(c, r)
             if (r != 0):
                 break
@@ -152,6 +162,7 @@ class image_treatment():
 
         # This method will load the image and generate the binary distribution
 
+        # self.img_original = cv2.imread('/home/leleo/Documents/BIR/computer-vision/3balls (copy).jpeg',1)
         self.img_original = cv2.imread('/home/leleo/Documents/BIR/computer-vision/3balls.jpeg',1)
         # img_bi = cv2.bilateralFilter(self.img_original,100,150,50)
         # img_gray = cv2.cvtColor(img_bi, cv2.COLOR_BGR2GRAY)
@@ -174,7 +185,7 @@ class image_treatment():
         cy = ceil(c[1])
         r = ceil(r)
 
-        detected_circle = cv2.circle(self.img_original.copy(), (cx,cy), r, (0,255,0), 10)
+        detected_circle = cv2.circle(self.img_original.copy(), (cx,cy), r, (0,255,0), 7)
         cv2.imshow('detected_circle',detected_circle)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
@@ -191,7 +202,7 @@ def main():
     minhw = np.amin([h,w])
     r_min = np.uint16(0.1*minhw)
     r_max = np.uint16(0.2*minhw)
-    c,r = cR.circle_ransac(img_bin, threshold=3, min_samp=1000, max_ite=2000, r_min=r_min, r_max=r_max)           # pass it trough the RANSAC algorithm
+    c,r = cR.circle_ransac(img_bin, threshold=1, min_samp=1200, max_ite=2000, r_min=r_min, r_max=r_max)           # pass it trough the RANSAC algorithm
     print(c, r)                     # prints the circle coordinates and the radius to the terminal
     it.draw_circle(c, r)            # this shows the image with the detected circle drawn in
 
